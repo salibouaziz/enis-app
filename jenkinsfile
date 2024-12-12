@@ -12,21 +12,24 @@ pipeline {
     ECR_REPO_NAME         = 'enis-app'
     IMAGE_REPO            = "${ECR_REPO_URL}/${ECR_REPO_NAME}"
     AWS_REGION            = "us-east-1"
-    
   }
 
   stages {
+    stage('Check Terraform Files') {
+      steps {
+        script {
+          dir('my-terraform-project') {
+            sh "ls -l"
+          }
+        }
+      }
+    }
+
     stage('Provision Server and Database') {
       steps {
         script {
-          dir('my-terraform-project/remote_backend') {
-            sh "terraform init"
-            sh "terraform apply --auto-approve"
-          }
-
           dir('my-terraform-project') {
             sh "terraform init"
-            sh "terraform plan -lock=false"
             sh "terraform apply -lock=false --auto-approve"
 
             EC2_PUBLIC_IP = sh(
@@ -59,10 +62,7 @@ pipeline {
             writeFile file: 'config.js', text: """
               export const API_BASE_URL = 'http://${EC2_PUBLIC_IP}:8000';
             """
-            sh '''
-              echo "Contents of config.js after update:"
-              cat config.js
-            '''
+            sh "cat config.js"
           }
         }
       }
@@ -72,26 +72,12 @@ pipeline {
       steps {
         script {
           dir('enis-app-tp/backend/backend') {
-            sh '''
-              if [ -f "settings.py" ]; then
-                echo "Found settings.py at $(pwd)"
-              else
-                echo "settings.py not found in $(pwd)!"
-                exit 1
-              fi
-            '''
-
-            sh """
-              sed -i "/'HOST':/c\\    'HOST': '${RDS_ENDPOINT}'," settings.py
-            """
-
-            sh '''
-              echo "DATABASES section of settings.py after update:"
-              sed -n '/DATABASES = {/,/^}/p' settings.py
-            '''
+            sh "ls -l settings.py || exit 1"
+            sh "sed -i \"/'HOST':/c\\    'HOST': '${RDS_ENDPOINT}',\" settings.py"
+            sh "sed -n '/DATABASES = {/,/^}/p' settings.py"
           }
         }
-      } 
+      }
     }
   }
 }
