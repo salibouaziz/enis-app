@@ -9,8 +9,7 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('jenkins_aws_secret_access_key')
         ECR_REPO_URL = '600627359985.dkr.ecr.us-east-1.amazonaws.com'
         ECR_REPO_NAME = 'enis-app'
-        IMAGE_REPO_FRONTEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-frontend"
-        IMAGE_REPO_BACKEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-backend"
+        IMAGE_REPO = "${ECR_REPO_URL}/${ECR_REPO_NAME}"
         AWS_REGION = "us-east-1"
     }
     stages {
@@ -21,36 +20,28 @@ pipeline {
                         sh "terraform init -reconfigure"
                         sh "terraform plan -lock=false"
                         sh "terraform apply -lock=false --auto-approve"
-
+                        
                         EC2_PUBLIC_IP = sh(
-                            script: '''terraform output instance_details | grep "instance_public_ip" | awk '{print \$3}' | tr -d '"' ''',
+                            script: 'terraform output instance_details | grep "instance_public_ip" | awk \'{print $3}\' | tr -d \'"\'',
                             returnStdout: true
                         ).trim()
 
                         RDS_ENDPOINT = sh(
-                            script: '''terraform output rds_endpoint | grep "endpoint" | awk -F'=' '{print \$2}' | tr -d '[:space:]"' | sed 's/:3306//' ''',
+                            script: '''
+                            terraform output rds_endpoint | grep "endpoint" | awk -F'=' '{print $2}' | tr -d '[:space:]"' | sed 's/:3306//'
+                            ''',
                             returnStdout: true
                         ).trim()
 
                         DEPLOYER_KEY_URI = sh(
-                            script: 'terraform output deployer_key_s3_uri | tr -d '"'',
+                            script: 'terraform output deployer_key_s3_uri | tr -d \'"\'',
                             returnStdout: true
                         ).trim()
-
+                        
                         echo "EC2 Public IP: ${EC2_PUBLIC_IP}"
                         echo "RDS Endpoint: ${RDS_ENDPOINT}"
                         echo "Deployer Key URI: ${DEPLOYER_KEY_URI}"
                     }
-                }
-            }
-        }
-        stage('Create Database in RDS') {
-            steps {
-                script {
-                    sh """
-                    mysql -h ${RDS_ENDPOINT} -P 3306 -u dbuser -pDBpassword2024 -e "CREATE DATABASE IF NOT EXISTS enis_tp;"
-                    mysql -h ${RDS_ENDPOINT} -P 3306 -u dbuser -pDBpassword2024 -e "SHOW DATABASES;"
-                    """
                 }
             }
         }
@@ -70,17 +61,27 @@ pipeline {
             steps {
                 script {
                     dir('enis-app-tp/backend/backend') {
-                        sh """
+                        sh '''
                         if [ -f "settings.py" ]; then
                             echo "Found settings.py at $(pwd)"
                         else
                             echo "settings.py not found in $(pwd)!"
                             exit 1
                         fi
-                        sed -i "/'HOST':/c\ 'HOST': '${RDS_ENDPOINT}'," settings.py
-                        sed -n '/DATABASES = {/,/^}/p' settings.py
-                        """
+                        '''
+                        sh "sed -i \"/'HOST':/c\\ 'HOST': '${RDS_ENDPOINT}',\" settings.py"
+                        sh "sed -n '/DATABASES = {/,/^}/p' settings.py"
                     }
+                }
+            }
+        }
+        stage('Create Database in RDS') {
+            steps {
+                script {
+                    sh """
+                    mysql -h ${RDS_ENDPOINT} -P 3306 -u dbuser -pDBpassword2024 -e "CREATE DATABASE IF NOT EXISTS enis_tp;"
+                    mysql -h ${RDS_ENDPOINT} -P 3306 -u dbuser -pDBpassword2024 -e "SHOW DATABASES;"
+                    """
                 }
             }
         }
@@ -119,8 +120,8 @@ pipeline {
             steps {
                 script {
                     echo 'Tagging and pushing Frontend Image...'
-                    sh "docker tag frontend-app:latest $IMAGE_REPO_FRONTEND"
-                    sh "docker push $IMAGE_REPO_FRONTEND"
+                    sh "docker tag frontend-app:latest $IMAGE_REPO/frontend-app:latest"
+                    sh "docker push $IMAGE_REPO/frontend-app:latest"
                 }
             }
         }
@@ -128,8 +129,8 @@ pipeline {
             steps {
                 script {
                     echo 'Tagging and pushing Backend Image...'
-                    sh "docker tag backend-app:latest $IMAGE_REPO_BACKEND"
-                    sh "docker push $IMAGE_REPO_BACKEND"
+                    sh "docker tag backend-app:latest $IMAGE_REPO/backend-app:latest"
+                    sh "docker push $IMAGE_REPO/backend-app:latest"
                 }
             }
         }
