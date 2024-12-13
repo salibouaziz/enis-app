@@ -2,9 +2,6 @@ def EC2_PUBLIC_IP = ""
 def RDS_ENDPOINT = ""
 def DEPLOYER_KEY_URI = ""
 
-def IMAGE_REPO_FRONTEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-frontend"
-def IMAGE_REPO_BACKEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-backend"
-
 pipeline {
     agent any
     environment {
@@ -12,6 +9,8 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('jenkins_aws_secret_access_key')
         ECR_REPO_URL = '600627359985.dkr.ecr.us-east-1.amazonaws.com'
         ECR_REPO_NAME = 'enis-app'
+        IMAGE_REPO_FRONTEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-frontend"
+        IMAGE_REPO_BACKEND = "${ECR_REPO_URL}/${ECR_REPO_NAME}-backend"
         AWS_REGION = "us-east-1"
     }
     stages {
@@ -24,17 +23,17 @@ pipeline {
                         sh "terraform apply -lock=false --auto-approve"
 
                         EC2_PUBLIC_IP = sh(
-                            script: 'terraform output instance_details | grep "instance_public_ip" | awk '{print $3}' | tr -d \'"\'',
+                            script: '''terraform output instance_details | grep "instance_public_ip" | awk '{print \$3}' | tr -d '"' ''',
                             returnStdout: true
                         ).trim()
 
                         RDS_ENDPOINT = sh(
-                            script: '''terraform output rds_endpoint | grep "endpoint" | awk -F'=' '{print $2}' | tr -d '[:space:]"' | sed 's/:3306//' ''',
+                            script: '''terraform output rds_endpoint | grep "endpoint" | awk -F'=' '{print \$2}' | tr -d '[:space:]"' | sed 's/:3306//' ''',
                             returnStdout: true
                         ).trim()
 
                         DEPLOYER_KEY_URI = sh(
-                            script: 'terraform output deployer_key_s3_uri | tr -d \'"\'',
+                            script: 'terraform output deployer_key_s3_uri | tr -d '"'',
                             returnStdout: true
                         ).trim()
 
@@ -120,8 +119,8 @@ pipeline {
             steps {
                 script {
                     echo 'Tagging and pushing Frontend Image...'
-                    sh "docker tag frontend-app:latest ${IMAGE_REPO_FRONTEND}"
-                    sh "docker push ${IMAGE_REPO_FRONTEND}"
+                    sh "docker tag frontend-app:latest $IMAGE_REPO_FRONTEND"
+                    sh "docker push $IMAGE_REPO_FRONTEND"
                 }
             }
         }
@@ -129,8 +128,8 @@ pipeline {
             steps {
                 script {
                     echo 'Tagging and pushing Backend Image...'
-                    sh "docker tag backend-app:latest ${IMAGE_REPO_BACKEND}"
-                    sh "docker push ${IMAGE_REPO_BACKEND}"
+                    sh "docker tag backend-app:latest $IMAGE_REPO_BACKEND"
+                    sh "docker push $IMAGE_REPO_BACKEND"
                 }
             }
         }
